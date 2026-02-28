@@ -12,14 +12,15 @@ const customerNav = [
 const riderNav = [
   { path: "/rider",           icon: "🏠", label: "Home" },
   { path: "/rider/delivery",  icon: "🚴", label: "Active" },
+  { path: "/rider/wallet",    icon: "💰", label: "Wallet" },
   { path: "/rider/history",   icon: "📋", label: "History" },
 ]
 
 const adminNav = [
   { path: "/admin",           icon: "📊", label: "Dashboard" },
   { path: "/admin/riders",    icon: "🏍️", label: "Riders" },
-  { path: "/admin/orders",    icon: "📦", label: "Orders" },
-  { path: "/admin/map",       icon: "🗺️", label: "Live Map" },
+  { path: "/admin/wallet",    icon: "💰", label: "Wallet" },
+  { path: "/admin/map",       icon: "🗺️", label: "Map" },
 ]
 
 export default function BottomNav() {
