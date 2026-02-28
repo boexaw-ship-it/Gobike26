@@ -1,0 +1,36 @@
+// src/data/mockRiders.js
+export const mockRiders = [
+  {
+    id: "rider1",
+    name: "ကိုမင်းသန့်",
+    phone: "09250001111",
+    isOnline: true,
+    isAvailable: false,
+    currentLocation: { lat: 16.845, lng: 96.140 },
+    rating: 4.8,
+    totalDeliveries: 142,
+    vehicleType: "bike",
+  },
+  {
+    id: "rider2",
+    name: "ကိုအောင်ကျော်",
+    phone: "09250002222",
+    isOnline: true,
+    isAvailable: true,
+    currentLocation: { lat: 16.860, lng: 96.160 },
+    rating: 4.6,
+    totalDeliveries: 98,
+    vehicleType: "bike",
+  },
+  {
+    id: "rider3",
+    name: "ကိုဇင်မင်းထွဋ်",
+    phone: "09250003333",
+    isOnline: false,
+    isAvailable: false,
+    currentLocation: { lat: 16.830, lng: 96.180 },
+    rating: 4.9,
+    totalDeliveries: 210,
+    vehicleType: "car",
+  },
+]
