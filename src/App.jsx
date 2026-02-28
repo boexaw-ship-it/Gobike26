@@ -5,6 +5,7 @@ import { AuthProvider } from "./context/AuthContext"
 import Landing from "./pages/Landing"
 import SignUp from "./pages/auth/SignUp"
 import Login from "./pages/auth/Login"
+import AdminLogin from "./pages/auth/AdminLogin"
 import CustomerDashboard from "./pages/customer/CustomerDashboard"
 import CreateOrder from "./pages/customer/CreateOrder"
 import TrackOrder from "./pages/customer/TrackOrder"
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/gobike-admin-2024" element={<AdminLogin />} />
 
           {/* Customer */}
           <Route path="/customer" element={<CustomerDashboard />} />
