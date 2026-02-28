@@ -16,3 +16,18 @@ const app = initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
 export const db   = getFirestore(app)
+```
+
+---
+
+## Flow
+```
+GitHub Secrets (သော့ပိတ်သိမ်း 🔒)
+         ↓
+deploy.yml မှာ ခေါ်သုံး
+         ↓
+Build အချိန် .env အဖြစ် inject
+         ↓
+config.js မှာ import.meta.env နဲ့ ဖတ်
+         ↓
+Firebase ချိတ် ✅
