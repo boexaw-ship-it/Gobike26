@@ -10,8 +10,10 @@ import CreateOrder from "./pages/customer/CreateOrder"
 import TrackOrder from "./pages/customer/TrackOrder"
 import RiderDashboard from "./pages/rider/RiderDashboard"
 import ActiveDelivery from "./pages/rider/ActiveDelivery"
+import RiderWallet from "./pages/rider/RiderWallet"
 import AdminDashboard from "./pages/admin/AdminDashboard"
 import LiveMap from "./pages/admin/LiveMap"
+import ManageWallet from "./pages/admin/ManageWallet"
 
 export default function App() {
   return (
@@ -31,10 +33,12 @@ export default function App() {
           {/* Rider */}
           <Route path="/rider" element={<RiderDashboard />} />
           <Route path="/rider/delivery" element={<ActiveDelivery />} />
+          <Route path="/rider/wallet" element={<RiderWallet />} />
 
           {/* Admin */}
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/map" element={<LiveMap />} />
+          <Route path="/admin/wallet" element={<ManageWallet />} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
