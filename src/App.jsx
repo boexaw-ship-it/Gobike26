@@ -19,7 +19,7 @@ import ManageWallet from "./pages/admin/ManageWallet"
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename="/Gobike26">
         <Routes>
           {/* Public */}
           <Route path="/" element={<Landing />} />
