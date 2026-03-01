@@ -1,12 +1,12 @@
 // src/pages/auth/Login.jsx
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { signInWithEmailAndPassword } from "firebase/auth"
+import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth"
 import { doc, getDoc } from "firebase/firestore"
 import { auth, db } from "../../firebase/config"
 
 export default function Login() {
-  const [form, setForm] = useState({ email: "", password: "" })
+  const [form, setForm] = useState({ email: "", password: "", remember: false })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const navigate = useNavigate()
@@ -16,6 +16,7 @@ export default function Login() {
     setLoading(true)
     setError("")
     try {
+      await setPersistence(auth, form.remember ? browserLocalPersistence : browserSessionPersistence)
       const { user } = await signInWithEmailAndPassword(auth, form.email, form.password)
       const snap = await getDoc(doc(db, "users", user.uid))
       const role = snap.data()?.role
@@ -38,25 +39,52 @@ export default function Login() {
         <h1 className="text-3xl font-display font-black text-white">Welcome Back 👋</h1>
         <p className="text-gray-400 text-sm font-body mt-1">Gobike မှ ကြိုဆိုပါသည်</p>
       </div>
+
       <div className="flex-1 px-6 py-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-600 text-xs px-4 py-3 rounded-2xl mb-4">
             ⚠️ {error}
           </div>
         )}
+
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Email</label>
-            <input type="email" placeholder="example@gmail.com" value={form.email}
+            <input
+              type="email"
+              placeholder="example@gmail.com"
+              value={form.email}
               onChange={e => setForm({ ...form, email: e.target.value })}
-              className="input-field" required />
+              className="input-field"
+              required
+            />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Password</label>
-            <input type="password" placeholder="••••••••" value={form.password}
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
-              className="input-field" required />
+              className="input-field"
+              required
+            />
           </div>
+
+          {/* Remember Me */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="remember"
+              checked={form.remember}
+              onChange={e => setForm({ ...form, remember: e.target.checked })}
+              className="w-4 h-4 accent-primary-500 rounded"
+            />
+            <label htmlFor="remember" className="text-xs text-gray-500">
+              မှတ်မိထားမည် (Remember Me)
+            </label>
+          </div>
+
           <button type="submit" disabled={loading} className="btn-primary mt-2">
             {loading ? "ဝင်ရောက်နေသည်..." : "Login ဝင်မည်"}
           </button>
@@ -66,12 +94,6 @@ export default function Login() {
           အကောင့်မရှိသေးဘူးလား?{" "}
           <button onClick={() => navigate("/signup")} className="text-primary-500 font-semibold">
             Sign Up လုပ်မည်
-          </button>
-        </p>
-
-        <p className="text-center mt-4">
-          <button onClick={() => navigate("/gobike-admin-2024")} className="text-gray-400 text-[10px]">
-            ⚙️ Admin
           </button>
         </p>
       </div>
