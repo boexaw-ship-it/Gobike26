@@ -6,12 +6,17 @@ import Landing from "./pages/Landing"
 import SignUp from "./pages/auth/SignUp"
 import Login from "./pages/auth/Login"
 import AdminLogin from "./pages/auth/AdminLogin"
+
 import CustomerDashboard from "./pages/customer/CustomerDashboard"
 import CreateOrder from "./pages/customer/CreateOrder"
 import TrackOrder from "./pages/customer/TrackOrder"
+import CustomerHistory from "./pages/customer/CustomerHistory"
+import CustomerProfile from "./pages/customer/CustomerProfile"
+
 import RiderDashboard from "./pages/rider/RiderDashboard"
 import ActiveDelivery from "./pages/rider/ActiveDelivery"
 import RiderWallet from "./pages/rider/RiderWallet"
+
 import AdminDashboard from "./pages/admin/AdminDashboard"
 import LiveMap from "./pages/admin/LiveMap"
 import ManageWallet from "./pages/admin/ManageWallet"
@@ -31,6 +36,8 @@ export default function App() {
           <Route path="/customer" element={<CustomerDashboard />} />
           <Route path="/customer/order" element={<CreateOrder />} />
           <Route path="/customer/track" element={<TrackOrder />} />
+          <Route path="/customer/history" element={<CustomerHistory />} />
+          <Route path="/customer/profile" element={<CustomerProfile />} />
 
           {/* Rider */}
           <Route path="/rider" element={<RiderDashboard />} />
