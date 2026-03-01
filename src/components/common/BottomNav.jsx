@@ -3,24 +3,24 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../../context/AuthContext"
 
 const customerNav = [
-  { path: "/customer",        icon: "🏠", label: "Home" },
-  { path: "/customer/order",  icon: "📦", label: "Order" },
-  { path: "/customer/track",  icon: "📍", label: "Track" },
-  { path: "/customer/history",icon: "📋", label: "History" },
+  { path: "/customer",         icon: "🏠", label: "Home" },
+  { path: "/customer/order",   icon: "📦", label: "Order" },
+  { path: "/customer/history", icon: "📋", label: "History" },
+  { path: "/customer/profile", icon: "👤", label: "Profile" },
 ]
 
 const riderNav = [
-  { path: "/rider",           icon: "🏠", label: "Home" },
-  { path: "/rider/delivery",  icon: "🚴", label: "Active" },
-  { path: "/rider/wallet",    icon: "💰", label: "Wallet" },
-  { path: "/rider/history",   icon: "📋", label: "History" },
+  { path: "/rider",          icon: "🏠", label: "Home" },
+  { path: "/rider/delivery", icon: "🚴", label: "Active" },
+  { path: "/rider/wallet",   icon: "💰", label: "Wallet" },
+  { path: "/rider/history",  icon: "📋", label: "History" },
 ]
 
 const adminNav = [
-  { path: "/admin",           icon: "📊", label: "Dashboard" },
-  { path: "/admin/riders",    icon: "🏍️", label: "Riders" },
-  { path: "/admin/wallet",    icon: "💰", label: "Wallet" },
-  { path: "/admin/map",       icon: "🗺️", label: "Map" },
+  { path: "/admin",        icon: "📊", label: "Dashboard" },
+  { path: "/admin/riders", icon: "🏍️", label: "Riders" },
+  { path: "/admin/wallet", icon: "💰", label: "Wallet" },
+  { path: "/admin/map",    icon: "🗺️", label: "Map" },
 ]
 
 export default function BottomNav() {
@@ -39,11 +39,8 @@ export default function BottomNav() {
         {navItems.map(item => {
           const active = location.pathname === item.path
           return (
-            <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              className={`bottom-nav-item flex-1 ${active ? "bg-primary-50" : ""}`}
-            >
+            <button key={item.path} onClick={() => navigate(item.path)}
+              className={`bottom-nav-item flex-1 ${active ? "bg-primary-50" : ""}`}>
               <span className="text-xl">{item.icon}</span>
               <span className={`text-[10px] font-semibold font-body ${active ? "text-primary-500" : "text-gray-400"}`}>
                 {item.label}
