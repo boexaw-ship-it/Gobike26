@@ -38,36 +38,24 @@ export default function Login() {
         <h1 className="text-3xl font-display font-black text-white">Welcome Back 👋</h1>
         <p className="text-gray-400 text-sm font-body mt-1">Gobike မှ ကြိုဆိုပါသည်</p>
       </div>
-
       <div className="flex-1 px-6 py-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-600 text-xs px-4 py-3 rounded-2xl mb-4">
             ⚠️ {error}
           </div>
         )}
-
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Email</label>
-            <input
-              type="email"
-              placeholder="example@gmail.com"
-              value={form.email}
+            <input type="email" placeholder="example@gmail.com" value={form.email}
               onChange={e => setForm({ ...form, email: e.target.value })}
-              className="input-field"
-              required
-            />
+              className="input-field" required />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Password</label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={form.password}
+            <input type="password" placeholder="••••••••" value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
-              className="input-field"
-              required
-            />
+              className="input-field" required />
           </div>
           <button type="submit" disabled={loading} className="btn-primary mt-2">
             {loading ? "ဝင်ရောက်နေသည်..." : "Login ဝင်မည်"}
@@ -82,10 +70,7 @@ export default function Login() {
         </p>
 
         <p className="text-center mt-4">
-          <button
-            onClick={() => navigate("/gobike-admin-2024")}
-            className="text-gray-400 text-[10px]"
-          >
+          <button onClick={() => navigate("/gobike-admin-2024")} className="text-gray-400 text-[10px]">
             ⚙️ Admin
           </button>
         </p>
