@@ -54,25 +54,43 @@ export default function AdminLogin() {
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Admin Email</label>
-            <input type="email" placeholder="admin@gobike.mm" value={form.email}
+            <input
+              type="email"
+              placeholder="admin@gobike.mm"
+              value={form.email}
               onChange={e => setForm({ ...form, email: e.target.value })}
               className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 transition-all"
-              required />
+              required
+            />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Password</label>
-            <input type="password" placeholder="••••••••" value={form.password}
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
               className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary-500 transition-all"
-              required />
+              required
+            />
           </div>
-          <button type="submit" disabled={loading}
-            className="w-full bg-primary-500 text-white font-display font-bold py-4 rounded-2xl shadow-primary active:scale-95 transition-all disabled:opacity-50 mt-2">
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-primary-500 text-white font-display font-bold py-4 rounded-2xl shadow-primary active:scale-95 transition-all disabled:opacity-50 mt-2"
+          >
             {loading ? "ဝင်ရောက်နေသည်..." : "🔐 Admin Login"}
           </button>
         </form>
+
         <p className="text-center text-xs text-gray-600 mt-6">
           Gobike Admin Panel · Authorized Access Only
+        </p>
+
+        <p className="text-center mt-3">
+          <button onClick={() => navigate("/login")} className="text-gray-600 text-[10px]">
+            ← Back to Login
+          </button>
         </p>
       </div>
     </div>
