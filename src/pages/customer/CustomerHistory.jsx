@@ -1,18 +1,18 @@
 // src/pages/customer/CustomerHistory.jsx
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from "firebase/firestore"
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore"
 import { db } from "../../firebase/config"
 import { useAuth } from "../../context/AuthContext"
 import Navbar from "../../components/common/Navbar"
 import BottomNav from "../../components/common/BottomNav"
 
 const STATUS_LABEL = {
-  pending:   { label: "စောင့်ဆိုင်းနေ",    color: "bg-yellow-100 text-yellow-600" },
-  accepted:  { label: "Rider လာနေသည်",   color: "bg-blue-100 text-blue-600" },
-  picked_up: { label: "သယ်ဆောင်နေသည်",   color: "bg-purple-100 text-purple-600" },
-  delivered: { label: "ပို့ပြီး",           color: "bg-green-100 text-green-600" },
-  cancelled: { label: "ပယ်ဖျက်ထား",       color: "bg-red-100 text-red-600" },
+  pending:   { label: "စောင့်ဆိုင်းနေ",  color: "bg-yellow-100 text-yellow-600" },
+  accepted:  { label: "Rider လာနေသည်",  color: "bg-blue-100 text-blue-600" },
+  picked_up: { label: "သယ်ဆောင်နေသည်", color: "bg-purple-100 text-purple-600" },
+  delivered: { label: "ပို့ပြီး",          color: "bg-green-100 text-green-600" },
+  cancelled: { label: "ပယ်ဖျက်ထား",      color: "bg-red-100 text-red-600" },
 }
 
 function RatingModal({ order, onClose, onSubmit }) {
@@ -20,7 +20,7 @@ function RatingModal({ order, onClose, onSubmit }) {
   const [comment, setComment] = useState("")
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-      <div className="bg-white w-full rounded-t-3xl px-6 py-6 animate-slide-up">
+      <div className="bg-white w-full rounded-t-3xl px-6 py-6">
         <h3 className="text-lg font-display font-black text-dark mb-1">Rating ပေးမည်</h3>
         <p className="text-xs text-gray-400 mb-4">{order.riderName || "Rider"} အား Rating ပေးပါ</p>
         <div className="flex justify-center gap-3 mb-4">
@@ -33,7 +33,7 @@ function RatingModal({ order, onClose, onSubmit }) {
           onChange={e => setComment(e.target.value)} className="input-field resize-none mb-4" />
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 py-4 rounded-2xl border border-gray-200 font-bold text-gray-500">ကျော်မည်</button>
-          <button onClick={() => onSubmit(rating, comment)} className="flex-[2] btn-primary">Rating ပေးမည် ⭐</button>
+          <button onClick={() => onSubmit(rating, comment)} className="flex-[2] btn-primary">⭐ Rating ပေးမည်</button>
         </div>
       </div>
     </div>
@@ -46,6 +46,8 @@ export default function CustomerHistory() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [ratingOrder, setRatingOrder] = useState(null)
+  const [cancellingId, setCancellingId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
 
   useEffect(() => {
     if (!user) return
@@ -66,6 +68,28 @@ export default function CustomerHistory() {
       rating, ratingComment: comment, ratedAt: new Date()
     })
     setRatingOrder(null)
+  }
+
+  const handleCancel = async (orderId) => {
+    if (!confirm("Order ကို ပယ်ဖျက်မည်လား?")) return
+    setCancellingId(orderId)
+    try {
+      await updateDoc(doc(db, "orders", orderId), {
+        status: "cancelled", cancelledAt: new Date(), cancelledBy: "customer"
+      })
+    } finally {
+      setCancellingId(null)
+    }
+  }
+
+  const handleDelete = async (orderId) => {
+    if (!confirm("Order မှတ်တမ်းကို ဖျက်မည်လား?")) return
+    setDeletingId(orderId)
+    try {
+      await deleteDoc(doc(db, "orders", orderId))
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const timeAgo = (ts) => {
@@ -108,30 +132,63 @@ export default function CustomerHistory() {
                     <span className="text-xs text-gray-400">{timeAgo(order.createdAt)}</span>
                   </div>
 
-                  <div className="space-y-1 mb-3">
+                  <div className="space-y-1 mb-2">
                     <div className="flex items-center gap-2 text-xs text-gray-600">
                       <span>📦</span><span>{order.pickup?.address}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-600">
                       <span>🎯</span><span>{order.dropoff?.address}</span>
                     </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span>💳</span>
+                      <span>{order.paymentType === "cod" ? "Cash on Delivery" : "Cash Pay"}</span>
+                    </div>
                   </div>
 
-                  <div className="flex justify-between items-center border-t border-gray-100 pt-2">
-                    <span className="text-sm font-display font-black text-primary-500">
-                      {order.deliveryFee?.toLocaleString()} ကျပ်
-                    </span>
+                  {/* Fee breakdown */}
+                  <div className="bg-gray-50 rounded-xl p-2 mb-3 space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Delivery Fee</span>
+                      <span className="font-bold text-primary-500">{order.deliveryFee?.toLocaleString()} ကျပ်</span>
+                    </div>
+                    {order.commission > 0 && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">Commission (10%)</span>
+                        <span className="text-orange-500">- {order.commission?.toLocaleString()} ကျပ်</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between items-center border-t border-gray-100 pt-2 gap-2">
+                    {/* Cancel - pending only */}
+                    {order.status === "pending" && (
+                      <button onClick={() => handleCancel(order.id)}
+                        disabled={cancellingId === order.id}
+                        className="text-xs bg-red-50 text-red-500 font-bold px-3 py-1.5 rounded-full">
+                        {cancellingId === order.id ? "..." : "❌ Cancel"}
+                      </button>
+                    )}
+
+                    {/* Rating - delivered only */}
                     {order.status === "delivered" && !order.rating && (
                       <button onClick={() => setRatingOrder(order)}
-                        className="text-xs bg-yellow-100 text-yellow-600 font-bold px-3 py-1 rounded-full">
+                        className="text-xs bg-yellow-100 text-yellow-600 font-bold px-3 py-1.5 rounded-full">
                         ⭐ Rating ပေး
                       </button>
                     )}
                     {order.rating && (
                       <div className="flex items-center gap-1">
                         {"⭐".repeat(order.rating)}
-                        <span className="text-xs text-gray-400">{order.rating}/5</span>
                       </div>
+                    )}
+
+                    {/* Delete - delivered or cancelled only */}
+                    {(order.status === "delivered" || order.status === "cancelled") && (
+                      <button onClick={() => handleDelete(order.id)}
+                        disabled={deletingId === order.id}
+                        className="ml-auto text-xs bg-gray-100 text-gray-400 font-bold px-3 py-1.5 rounded-full">
+                        {deletingId === order.id ? "..." : "🗑️ ဖျက်"}
+                      </button>
                     )}
                   </div>
                 </div>
