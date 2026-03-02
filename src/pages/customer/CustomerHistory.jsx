@@ -45,21 +45,37 @@ export default function CustomerHistory() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [ratingOrder, setRatingOrder] = useState(null)
   const [cancellingId, setCancellingId] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
 
   useEffect(() => {
     if (!user) return
+    // orderBy မပါသော query - index မလိုဘဲ ရသည်
     const q = query(
       collection(db, "orders"),
-      where("customerId", "==", user.uid),
-      orderBy("createdAt", "desc")
+      where("customerId", "==", user.uid)
     )
-    const unsub = onSnapshot(q, snap => {
-      setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-      setLoading(false)
-    })
+    const unsub = onSnapshot(q,
+      snap => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        // client side မှာ sort
+        data.sort((a, b) => {
+          const aTime = a.createdAt?.seconds || 0
+          const bTime = b.createdAt?.seconds || 0
+          return bTime - aTime
+        })
+        setOrders(data)
+        setLoading(false)
+        setError(null)
+      },
+      err => {
+        console.error(err)
+        setError("Order တွေ ဖတ်ရာတွင် အမှားဖြစ်သည်")
+        setLoading(false)
+      }
+    )
     return () => unsub()
   }, [user])
 
@@ -107,7 +123,14 @@ export default function CustomerHistory() {
       <Navbar title="Order မှတ်တမ်း" />
       <div className="flex-1 overflow-y-auto pb-24 px-4 pt-4">
         {loading ? (
-          <div className="text-center py-12 text-gray-400">Loading...</div>
+          <div className="text-center py-12">
+            <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-gray-400 text-sm">Loading...</p>
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
         ) : orders.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-4xl mb-3">📋</p>
@@ -145,22 +168,15 @@ export default function CustomerHistory() {
                     </div>
                   </div>
 
-                  {/* Fee breakdown */}
-                  <div className="bg-gray-50 rounded-xl p-2 mb-3 space-y-1">
+                  {/* Fee - customer ဆီ delivery fee ပဲပြ */}
+                  <div className="bg-gray-50 rounded-xl p-2 mb-3">
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-400">Delivery Fee</span>
                       <span className="font-bold text-primary-500">{order.deliveryFee?.toLocaleString()} ကျပ်</span>
                     </div>
-                    {order.commission > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Commission (10%)</span>
-                        <span className="text-orange-500">- {order.commission?.toLocaleString()} ကျပ်</span>
-                      </div>
-                    )}
                   </div>
 
-                  <div className="flex justify-between items-center border-t border-gray-100 pt-2 gap-2">
-                    {/* Cancel - pending only */}
+                  <div className="flex items-center border-t border-gray-100 pt-2 gap-2 flex-wrap">
                     {order.status === "pending" && (
                       <button onClick={() => handleCancel(order.id)}
                         disabled={cancellingId === order.id}
@@ -168,8 +184,6 @@ export default function CustomerHistory() {
                         {cancellingId === order.id ? "..." : "❌ Cancel"}
                       </button>
                     )}
-
-                    {/* Rating - delivered only */}
                     {order.status === "delivered" && !order.rating && (
                       <button onClick={() => setRatingOrder(order)}
                         className="text-xs bg-yellow-100 text-yellow-600 font-bold px-3 py-1.5 rounded-full">
@@ -177,12 +191,10 @@ export default function CustomerHistory() {
                       </button>
                     )}
                     {order.rating && (
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 text-sm">
                         {"⭐".repeat(order.rating)}
                       </div>
                     )}
-
-                    {/* Delete - delivered or cancelled only */}
                     {(order.status === "delivered" || order.status === "cancelled") && (
                       <button onClick={() => handleDelete(order.id)}
                         disabled={deletingId === order.id}

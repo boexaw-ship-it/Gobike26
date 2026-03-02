@@ -1,7 +1,7 @@
 // src/pages/customer/CustomerDashboard.jsx
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { collection, query, where, orderBy, limit, onSnapshot } from "firebase/firestore"
+import { collection, query, where, onSnapshot } from "firebase/firestore"
 import { db } from "../../firebase/config"
 import { useAuth } from "../../context/AuthContext"
 import Navbar from "../../components/common/Navbar"
@@ -19,38 +19,27 @@ const STATUS_LABEL = {
 export default function CustomerDashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [activeOrders, setActiveOrders] = useState([])
-  const [recentOrders, setRecentOrders] = useState([])
+  const [allOrders, setAllOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!user) return
-
-    // Active orders (pending / accepted / picked_up)
-    const activeQ = query(
+    // index မလိုဘဲ customerId တစ်ခုပဲ filter
+    const q = query(
       collection(db, "orders"),
-      where("customerId", "==", user.uid),
-      where("status", "in", ["pending", "accepted", "picked_up"]),
-      orderBy("createdAt", "desc")
+      where("customerId", "==", user.uid)
     )
-    const unsubActive = onSnapshot(activeQ, snap => {
-      setActiveOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    const unsub = onSnapshot(q, snap => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+      setAllOrders(data)
       setLoading(false)
     })
-
-    // Recent orders (latest 3)
-    const recentQ = query(
-      collection(db, "orders"),
-      where("customerId", "==", user.uid),
-      orderBy("createdAt", "desc"),
-      limit(3)
-    )
-    const unsubRecent = onSnapshot(recentQ, snap => {
-      setRecentOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    })
-
-    return () => { unsubActive(); unsubRecent() }
+    return () => unsub()
   }, [user])
+
+  const activeOrders = allOrders.filter(o => ["pending","accepted","picked_up"].includes(o.status))
+  const recentOrders = allOrders.slice(0, 3)
 
   const timeAgo = (ts) => {
     if (!ts) return ""
@@ -69,7 +58,7 @@ export default function CustomerDashboard() {
 
         {/* Greeting */}
         <div className="px-4 pt-4 pb-2">
-          <p className="text-gray-400 text-xs font-body">မင်္ဂလာပါ 👋</p>
+          <p className="text-gray-400 text-xs">မင်္ဂလာပါ 👋</p>
           <h2 className="text-xl font-display font-black text-dark">{user?.name}</h2>
         </div>
 
@@ -105,7 +94,9 @@ export default function CustomerDashboard() {
         {/* Active Orders */}
         {activeOrders.length > 0 && (
           <div className="px-4 mb-4">
-            <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Active Orders</p>
+            <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">
+              Active Orders ({activeOrders.length})
+            </p>
             <div className="space-y-3">
               {activeOrders.map(order => {
                 const status = STATUS_LABEL[order.status] || STATUS_LABEL.pending
@@ -115,7 +106,7 @@ export default function CustomerDashboard() {
                       <span className="text-xs font-semibold bg-white/20 px-2 py-1 rounded-full">
                         #{order.id?.slice(-6).toUpperCase()}
                       </span>
-                      <span className={`text-xs px-2 py-1 rounded-full font-semibold bg-white/20`}>
+                      <span className="text-xs bg-white/20 px-2 py-1 rounded-full font-semibold">
                         {status.label}
                       </span>
                     </div>
@@ -143,7 +134,10 @@ export default function CustomerDashboard() {
             </button>
           </div>
           {loading ? (
-            <p className="text-xs text-gray-400 text-center py-4">Loading...</p>
+            <div className="text-center py-8">
+              <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-xs text-gray-400">Loading...</p>
+            </div>
           ) : recentOrders.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-3xl mb-2">📦</p>
@@ -157,7 +151,7 @@ export default function CustomerDashboard() {
               {recentOrders.map(order => {
                 const status = STATUS_LABEL[order.status] || STATUS_LABEL.pending
                 return (
-                  <div key={order.id} className="card active:scale-[0.98] transition-all"
+                  <div key={order.id} className="card active:scale-[0.98] transition-all cursor-pointer"
                     onClick={() => navigate("/customer/history")}>
                     <div className="flex justify-between items-start mb-1">
                       <span className="text-xs font-bold text-gray-400">#{order.id?.slice(-6).toUpperCase()}</span>
@@ -165,7 +159,9 @@ export default function CustomerDashboard() {
                         {status.label}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 mb-1">📦 {order.pickup?.address} → 🎯 {order.dropoff?.address}</p>
+                    <p className="text-xs text-gray-500 mb-1">
+                      📦 {order.pickup?.address} → 🎯 {order.dropoff?.address}
+                    </p>
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-display font-black text-primary-500">
                         {order.deliveryFee?.toLocaleString()} ကျပ်
