@@ -11,10 +11,11 @@ const customerNav = [
 ]
 
 const riderNav = [
-  { path: "/rider",          icon: "🏠", label: "Home" },
-  { path: "/rider/delivery", icon: "🚴", label: "Active" },
-  { path: "/rider/wallet",   icon: "💰", label: "Wallet" },
-  { path: "/rider/history",  icon: "📋", label: "History" },
+  { path: "/rider",            icon: "🏠", label: "Home" },
+  { path: "/rider/delivery",   icon: "🚴", label: "Active" },
+  { path: "/rider/wallet",     icon: "🪙", label: "Wallet" },
+  { path: "/rider/history",    icon: "📋", label: "History" },
+  { path: "/rider/profile",    icon: "👤", label: "Profile" },
 ]
 
 const adminNav = [
@@ -31,8 +32,7 @@ export default function BottomNav() {
 
   const navItems =
     user?.role === "customer" ? customerNav :
-    user?.role === "rider" ? riderNav :
-    adminNav
+    user?.role === "rider"    ? riderNav    : adminNav
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-white shadow-bottom-nav border-t border-gray-100">
@@ -43,7 +43,7 @@ export default function BottomNav() {
             <button key={item.path} onClick={() => navigate(item.path)}
               className={`bottom-nav-item flex-1 ${active ? "bg-primary-50" : ""}`}>
               <span className="text-lg">{item.icon}</span>
-              <span className={`text-[9px] font-semibold font-body ${active ? "text-primary-500" : "text-gray-400"}`}>
+              <span className={`text-[9px] font-semibold ${active ? "text-primary-500" : "text-gray-400"}`}>
                 {item.label}
               </span>
             </button>
