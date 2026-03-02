@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext"
 const customerNav = [
   { path: "/customer",         icon: "🏠", label: "Home" },
   { path: "/customer/order",   icon: "📦", label: "Order" },
+  { path: "/customer/track",   icon: "📍", label: "Track" },
   { path: "/customer/history", icon: "📋", label: "History" },
   { path: "/customer/profile", icon: "👤", label: "Profile" },
 ]
@@ -35,14 +36,14 @@ export default function BottomNav() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-white shadow-bottom-nav border-t border-gray-100">
-      <div className="flex items-center justify-around px-2 py-2 max-w-md mx-auto">
+      <div className="flex items-center justify-around px-1 py-2 max-w-md mx-auto">
         {navItems.map(item => {
           const active = location.pathname === item.path
           return (
             <button key={item.path} onClick={() => navigate(item.path)}
               className={`bottom-nav-item flex-1 ${active ? "bg-primary-50" : ""}`}>
-              <span className="text-xl">{item.icon}</span>
-              <span className={`text-[10px] font-semibold font-body ${active ? "text-primary-500" : "text-gray-400"}`}>
+              <span className="text-lg">{item.icon}</span>
+              <span className={`text-[9px] font-semibold font-body ${active ? "text-primary-500" : "text-gray-400"}`}>
                 {item.label}
               </span>
             </button>
