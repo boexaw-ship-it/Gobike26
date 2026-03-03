@@ -1,5 +1,5 @@
 // src/pages/rider/ActiveDelivery.jsx
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { db } from "../../firebase/config"
@@ -10,25 +10,28 @@ import BottomNav from "../../components/common/BottomNav"
 import MapView from "../../components/map/MapView"
 
 const STATUS_FLOW = [
-  { key: "accepted",  icon: "✅", label: "Order လက်ခံပြီ",   action: "📦 ပစ္စည်းယူပြီ" },
-  { key: "picked_up", icon: "📦", label: "ပစ္စည်းယူပြီ",    action: "🎉 ပို့ဆောင်ပြီ" },
-  { key: "delivered", icon: "🎉", label: "ပို့ဆောင်ပြီးပြီ", action: null },
+  { key: "accepted",  icon: "✅", label: "Order လက်ခံပြီ",    action: "📦 ပစ္စည်းယူပြီ" },
+  { key: "picked_up", icon: "📦", label: "ပစ္စည်းယူပြီ — သယ်ဆောင်နေသည်", action: "🎉 ပို့ဆောင်ပြီ" },
+  { key: "delivered", icon: "🎉", label: "ပို့ဆောင်ပြီးပြီ!", action: null },
 ]
 
 async function sendTelegramStatus(order, status, rider) {
   const BOT_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN
   const CHAT_ID   = import.meta.env.VITE_TELEGRAM_ADMIN_CHAT_ID
   if (!BOT_TOKEN || !CHAT_ID) return
-  const now  = new Date()
-  const time = now.toLocaleString("en-GB", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })
-
-  const statusText = {
-    picked_up: "📦 ပစ္စည်းယူပြီ - သယ်ဆောင်နေသည်",
-    delivered: "✅ ပို့ဆောင်ပြီးပြီ!"
-  }
-
-  const text = `
-${status === "delivered" ? "🎉" : "📦"} <b>${statusText[status]}</b>
+  const time = new Date().toLocaleString("en-GB", {
+    day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true
+  })
+  const msgs = {
+    picked_up: `📦 <b>ပစ္စည်းယူပြီ — သယ်ဆောင်နေသည်</b>
+━━━━━━━━━━━━━━━━
+📦 <b>Order #${order.id?.slice(-6).toUpperCase()}</b>
+⏰ <b>အချိန်:</b> ${time}
+🏍️ <b>Rider:</b> ${rider.name}
+👤 <b>Customer:</b> ${order.customerName}
+📍 <b>From:</b> ${order.pickup?.address}
+🎯 <b>To:</b> ${order.dropoff?.address}`,
+    delivered: `🎉 <b>ပို့ဆောင်ပြီးပြီ!</b>
 ━━━━━━━━━━━━━━━━
 📦 <b>Order #${order.id?.slice(-6).toUpperCase()}</b>
 ⏰ <b>အချိန်:</b> ${time}
@@ -37,27 +40,41 @@ ${status === "delivered" ? "🎉" : "📦"} <b>${statusText[status]}</b>
 👤 <b>Customer:</b> ${order.customerName}
 📍 <b>From:</b> ${order.pickup?.address}
 🎯 <b>To:</b> ${order.dropoff?.address}
-🚚 <b>Delivery Fee:</b> ${order.deliveryFee?.toLocaleString()} ကျပ်
-${status === "delivered" ? `📊 <b>Commission (10%):</b> ${order.commission?.toLocaleString()} ကျပ်\n🏍️ <b>Rider ရရှိသည်:</b> ${order.riderNet?.toLocaleString()} ကျပ်` : ""}
-  `.trim()
-
+━━━━━━━━━━━━━━━━
+💎 <b>ပစ္စည်းတန်ဖိုး:</b> ${Number(order.itemValue||0).toLocaleString()} ကျပ်
+🚚 <b>Delivery Fee:</b> ${Number(order.deliveryFee||0).toLocaleString()} ကျပ်
+📊 <b>Commission (10%):</b> ${Number(order.commission||0).toLocaleString()} ကျပ်
+🏍️ <b>Rider ရရှိသည်:</b> ${Number(order.riderNet||0).toLocaleString()} ကျပ်`
+  }
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: "HTML" }),
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ chat_id: CHAT_ID, text: msgs[status], parse_mode:"HTML" }),
   }).catch(() => {})
 }
 
-export default function ActiveDelivery() {
-  const { user } = useAuth()
-  const navigate = useNavigate()
-  const [activeOrder, setActiveOrder] = useState(null)
-  const [newOrderAlert, setNewOrderAlert] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [updating, setUpdating] = useState(false)
-  const [showDoneModal, setShowDoneModal] = useState(false)
-  const [doneData, setDoneData] = useState(null)
+// Simulate GPS movement near pickup→dropoff
+function simulateRiderPos(pickup, dropoff, step) {
+  if (!pickup || !dropoff) return null
+  const t = Math.min(step / 20, 1)
+  return {
+    lat: pickup.lat + (dropoff.lat - pickup.lat) * t + (Math.random() - 0.5) * 0.001,
+    lng: pickup.lng + (dropoff.lng - pickup.lng) * t + (Math.random() - 0.5) * 0.001,
+  }
+}
 
+export default function ActiveDelivery() {
+  const { user }  = useAuth()
+  const navigate  = useNavigate()
+  const [activeOrder, setActiveOrder]   = useState(null)
+  const [loading, setLoading]           = useState(true)
+  const [updating, setUpdating]         = useState(false)
+  const [showDoneModal, setShowDoneModal] = useState(false)
+  const [doneData, setDoneData]         = useState(null)
+  const [newOrderAlert, setNewOrderAlert] = useState(null)
+  const [riderPos, setRiderPos]         = useState(null)
+  const moveStep = useRef(0)
+
+  // Active order listener
   useEffect(() => {
     if (!user) return
     const q = query(
@@ -67,25 +84,39 @@ export default function ActiveDelivery() {
     )
     const unsub = onSnapshot(q, snap => {
       const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      setActiveOrder(orders[0] || null)
+      const order = orders[0] || null
+      setActiveOrder(order)
       setLoading(false)
+      // init rider position
+      if (order?.pickup) {
+        setRiderPos({
+          lat: order.pickup.lat + (Math.random()-0.5)*0.002,
+          lng: order.pickup.lng + (Math.random()-0.5)*0.002,
+        })
+      }
     })
     return () => unsub()
   }, [user])
 
-  // New pending order alert while delivering
+  // Simulate GPS movement when picked_up
   useEffect(() => {
-    if (!user || !activeOrder) return
+    if (!activeOrder || activeOrder.status !== "picked_up") return
+    const interval = setInterval(() => {
+      moveStep.current += 1
+      setRiderPos(simulateRiderPos(activeOrder.pickup, activeOrder.dropoff, moveStep.current))
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [activeOrder?.status])
+
+  // New pending orders alert while delivering
+  useEffect(() => {
+    if (!activeOrder) return
     const q = query(collection(db, "orders"), where("status", "==", "pending"))
     const unsub = onSnapshot(q, snap => {
-      if (snap.docs.length > 0) {
-        setNewOrderAlert(snap.docs.length)
-      } else {
-        setNewOrderAlert(null)
-      }
+      setNewOrderAlert(snap.docs.length > 0 ? snap.docs.length : null)
     })
     return () => unsub()
-  }, [user, activeOrder])
+  }, [activeOrder])
 
   const statusIdx = activeOrder ? STATUS_FLOW.findIndex(s => s.key === activeOrder.status) : 0
 
@@ -93,35 +124,31 @@ export default function ActiveDelivery() {
     if (!activeOrder) return
     setUpdating(true)
     try {
-      const nextStatuses = { accepted: "picked_up", picked_up: "delivered" }
-      const nextStatus = nextStatuses[activeOrder.status]
-      if (!nextStatus) return
+      const next = { accepted: "picked_up", picked_up: "delivered" }[activeOrder.status]
+      if (!next) return
 
       await updateDoc(doc(db, "orders", activeOrder.id), {
-        status: nextStatus,
+        status: next,
         updatedAt: serverTimestamp(),
-        ...(nextStatus === "picked_up" && { pickedUpAt: serverTimestamp() }),
-        ...(nextStatus === "delivered" && { deliveredAt: serverTimestamp() }),
+        ...(next === "picked_up"  && { pickedUpAt:  serverTimestamp() }),
+        ...(next === "delivered"  && { deliveredAt: serverTimestamp() }),
       })
 
-      await sendTelegramStatus(activeOrder, nextStatus, user)
+      await sendTelegramStatus(activeOrder, next, user)
 
-      // Commission deduct on delivered
-      if (nextStatus === "delivered") {
+      if (next === "delivered") {
         const result = await deductCommission(user.uid, activeOrder.id, activeOrder.deliveryFee)
         setDoneData({
-          deliveryFee: activeOrder.deliveryFee,
-          commission:  result.commission || activeOrder.commission,
-          riderNet:    result.netAmount || activeOrder.riderNet,
+          itemValue:    activeOrder.itemValue,
+          deliveryFee:  activeOrder.deliveryFee,
+          commission:   result.commission  ?? activeOrder.commission,
+          riderNet:     result.netAmount   ?? activeOrder.riderNet,
           balanceAfter: result.balanceAfter,
         })
         setShowDoneModal(true)
       }
-    } catch (e) {
-      alert("Error: " + e.message)
-    } finally {
-      setUpdating(false)
-    }
+    } catch (e) { alert("Error: " + e.message) }
+    finally { setUpdating(false) }
   }
 
   // Done modal
@@ -130,24 +157,32 @@ export default function ActiveDelivery() {
       <div className="min-h-screen bg-surface flex items-center justify-center flex-col gap-4 px-6">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-4xl animate-bounce">🎉</div>
         <h2 className="text-2xl font-display font-black text-dark">ပို့ဆောင်ပြီးပြီ!</h2>
-        <div className="w-full max-w-sm bg-white rounded-3xl p-4 shadow-card space-y-2">
+        <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-card space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">ငွေစာရင်း</p>
           <div className="flex justify-between text-xs">
-            <span className="text-gray-400">🚚 Delivery Fee</span>
-            <span className="font-semibold">{doneData.deliveryFee?.toLocaleString()} ကျပ်</span>
+            <span className="text-gray-400">💎 ပစ္စည်းတန်ဖိုး</span>
+            <span className="font-semibold">{Number(doneData.itemValue||0).toLocaleString()} ကျပ်</span>
           </div>
           <div className="flex justify-between text-xs">
+            <span className="text-gray-400">🚚 Delivery Fee</span>
+            <span className="font-semibold">{Number(doneData.deliveryFee||0).toLocaleString()} ကျပ်</span>
+          </div>
+          <div className="flex justify-between text-xs border-t pt-2">
+            <span className="text-gray-400">💰 Total (Customer ပေးရမည်)</span>
+            <span className="font-bold">{(Number(doneData.itemValue||0)+Number(doneData.deliveryFee||0)).toLocaleString()} ကျပ်</span>
+          </div>
+          <div className="flex justify-between text-xs border-t pt-2">
             <span className="text-gray-400">📊 Commission (10%)</span>
-            <span className="text-red-500 font-semibold">- {doneData.commission?.toLocaleString()} ကျပ်</span>
+            <span className="text-red-500">- {Number(doneData.commission||0).toLocaleString()} ကျပ်</span>
           </div>
           <div className="flex justify-between text-sm border-t pt-2">
-            <span className="font-bold">💰 သင်ရရှိသည်</span>
-            <span className="font-display font-black text-green-600">{doneData.riderNet?.toLocaleString()} ကျပ်</span>
+            <span className="font-bold text-gray-700">🏍️ သင်ရရှိသည်</span>
+            <span className="text-xl font-display font-black text-green-600">{Number(doneData.riderNet||0).toLocaleString()} ကျပ်</span>
           </div>
           {doneData.balanceAfter !== undefined && (
             <div className="flex justify-between text-xs border-t pt-2">
               <span className="text-gray-400">🪙 Coin လက်ကျန်</span>
-              <span className="font-semibold">{doneData.balanceAfter?.toLocaleString()} ကျပ်</span>
+              <span className="font-semibold">{Number(doneData.balanceAfter||0).toLocaleString()} ကျပ်</span>
             </div>
           )}
         </div>
@@ -171,7 +206,7 @@ export default function ActiveDelivery() {
               <p className="text-xs font-bold">Order {newOrderAlert} ခု ထပ်ဝင်နေသည်!</p>
               <p className="text-xs opacity-70">လက်ရှိ delivery ပြီးမှ ကောက်နိုင်မည်</p>
             </div>
-            <button onClick={() => setNewOrderAlert(null)} className="text-white/70">✕</button>
+            <button onClick={() => setNewOrderAlert(null)} className="text-white/70 text-lg">✕</button>
           </div>
         )}
 
@@ -189,11 +224,13 @@ export default function ActiveDelivery() {
           </div>
         ) : (
           <>
-            {/* Map */}
+            {/* Map with live rider position */}
             <div className="h-56 relative">
               <MapView
                 pickupPoint={activeOrder.pickup}
                 dropoffPoint={activeOrder.dropoff}
+                riderLocation={riderPos}
+                riderName={user?.name}
                 height="100%"
               />
               <div className="absolute top-3 left-3 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
@@ -202,12 +239,12 @@ export default function ActiveDelivery() {
               </div>
             </div>
 
-            {/* Status Card */}
+            {/* Status Steps */}
             <div className="px-4 -mt-4 relative z-10">
               <div className={`card ${statusIdx === 2 ? "border-2 border-green-400" : ""}`}>
                 <div className="text-center py-2">
                   <span className="text-4xl">{STATUS_FLOW[statusIdx]?.icon}</span>
-                  <p className="font-display font-black text-dark text-lg mt-2">{STATUS_FLOW[statusIdx]?.label}</p>
+                  <p className="font-display font-black text-dark text-base mt-2">{STATUS_FLOW[statusIdx]?.label}</p>
                 </div>
                 <div className="flex items-center justify-center gap-2 my-3">
                   {STATUS_FLOW.map((s, i) => (
@@ -217,7 +254,7 @@ export default function ActiveDelivery() {
                         {i < statusIdx ? "✓" : i + 1}
                       </div>
                       {i < STATUS_FLOW.length - 1 && (
-                        <div className={`w-8 h-0.5 transition-all ${i < statusIdx ? "bg-primary-500" : "bg-gray-200"}`} />
+                        <div className={`w-10 h-0.5 transition-all ${i < statusIdx ? "bg-primary-500" : "bg-gray-200"}`} />
                       )}
                     </div>
                   ))}
@@ -225,15 +262,17 @@ export default function ActiveDelivery() {
               </div>
             </div>
 
-            {/* Order Info */}
+            {/* Order Details */}
             <div className="px-4 mt-3">
               <div className="card space-y-3">
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-center">
                   <p className="text-xs text-gray-400">#{activeOrder.id?.slice(-6).toUpperCase()}</p>
                   <p className="font-display font-black text-primary-500">{activeOrder.deliveryFee?.toLocaleString()} ကျပ်</p>
                 </div>
+
+                {/* Route */}
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">📦</div>
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0">📦</div>
                   <div>
                     <p className="text-xs text-gray-400">ယူမည့်နေရာ</p>
                     <p className="text-sm font-semibold">{activeOrder.pickup?.address}</p>
@@ -241,51 +280,55 @@ export default function ActiveDelivery() {
                 </div>
                 <div className="w-px h-3 bg-gray-200 ml-4" />
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">🎯</div>
+                  <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center shrink-0">🎯</div>
                   <div>
                     <p className="text-xs text-gray-400">ပို့မည့်နေရာ</p>
                     <p className="text-sm font-semibold">{activeOrder.dropoff?.address}</p>
                   </div>
                 </div>
-                <div className="border-t border-gray-100 pt-3 space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">👤 Customer</span>
-                    <span className="font-semibold">{activeOrder.customerName}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">📞 ဖုန်း</span>
-                    <a href={`tel:${activeOrder.customerPhone}`} className="font-semibold text-primary-500">
-                      {activeOrder.customerPhone}
-                    </a>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">🏷️ ပစ္စည်း</span>
-                    <span className="font-semibold">{activeOrder.itemTypeLabel}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">💳 ငွေ</span>
-                    <span className="font-semibold">{activeOrder.paymentType === "cod" ? "💵 COD" : "✅ Cash Pay"}</span>
-                  </div>
-                  {activeOrder.note && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-400">📝 မှတ်ချက်</span>
-                      <span className="font-semibold text-right max-w-[60%]">{activeOrder.note}</span>
+
+                {/* Customer & Item info */}
+                <div className="border-t border-gray-100 pt-3 space-y-1.5">
+                  {[
+                    ["👤 Customer",    activeOrder.customerName],
+                    ["📞 ဖုန်း",         activeOrder.customerPhone, true],
+                    ["🏷️ ပစ္စည်း",       activeOrder.itemTypeLabel],
+                    ["💳 ငွေ",           activeOrder.paymentType==="cod" ? "💵 COD" : "✅ Cash Pay"],
+                    ...(activeOrder.note ? [["📝 မှတ်ချက်", activeOrder.note]] : []),
+                  ].map(([k, v, isPhone]) => (
+                    <div key={k} className="flex justify-between text-xs">
+                      <span className="text-gray-400">{k}</span>
+                      {isPhone
+                        ? <a href={`tel:${v}`} className="font-semibold text-primary-500">{v}</a>
+                        : <span className="font-semibold text-right max-w-[55%]">{v}</span>
+                      }
                     </div>
-                  )}
+                  ))}
                 </div>
-                {/* Fee preview */}
-                <div className="bg-gray-50 rounded-xl p-3 space-y-1">
+
+                {/* Fee breakdown with item value */}
+                <div className="bg-gray-50 rounded-2xl p-3 space-y-1.5 border-t border-gray-100">
                   <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">Delivery Fee</span>
-                    <span className="font-bold">{activeOrder.deliveryFee?.toLocaleString()} ကျပ်</span>
+                    <span className="text-gray-500">💎 ပစ္စည်းတန်ဖိုး</span>
+                    <span className="font-semibold">{Number(activeOrder.itemValue||0).toLocaleString()} ကျပ်</span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">Commission (10%)</span>
-                    <span className="text-red-500">- {activeOrder.commission?.toLocaleString()} ကျပ်</span>
+                    <span className="text-gray-500">🚚 Delivery Fee</span>
+                    <span className="font-semibold">{Number(activeOrder.deliveryFee||0).toLocaleString()} ကျပ်</span>
                   </div>
-                  <div className="flex justify-between text-xs border-t pt-1">
-                    <span className="font-bold text-gray-700">သင်ရရှိမည်</span>
-                    <span className="font-bold text-green-600">{activeOrder.riderNet?.toLocaleString()} ကျပ်</span>
+                  <div className="flex justify-between text-xs border-t border-gray-200 pt-1">
+                    <span className="font-bold text-gray-600">💰 Total (Customer ပေးရ)</span>
+                    <span className="font-bold text-dark">
+                      {(Number(activeOrder.itemValue||0)+Number(activeOrder.deliveryFee||0)).toLocaleString()} ကျပ်
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">📊 Commission (10%)</span>
+                    <span className="text-red-500">- {Number(activeOrder.commission||0).toLocaleString()} ကျပ်</span>
+                  </div>
+                  <div className="flex justify-between text-xs border-t border-gray-200 pt-1">
+                    <span className="font-bold text-gray-700">🏍️ သင်ရရှိမည်</span>
+                    <span className="font-bold text-green-600">{Number(activeOrder.riderNet||0).toLocaleString()} ကျပ်</span>
                   </div>
                 </div>
               </div>
