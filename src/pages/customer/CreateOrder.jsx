@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom"
 import { collection, addDoc, serverTimestamp } from "firebase/firestore"
 import { db } from "../../firebase/config"
 import { useAuth } from "../../context/AuthContext"
+import { notifyNewOrder } from "../../services/notificationService"
+import { collection as fbCol, getDocs, query as fbQuery, where as fbWhere } from "firebase/firestore"
 import Navbar from "../../components/common/Navbar"
 import MapView from "../../components/map/MapView"
 
@@ -155,6 +157,14 @@ export default function CreateOrder() {
       const docRef = await addDoc(collection(db, "orders"), orderData)
       setOrderId(docRef.id)
       await sendTelegram({ ...orderData, id: docRef.id }, fees)
+      // Notify online riders
+      try {
+        const ridersSnap = await getDocs(fbQuery(fbCol(db, "riders"), fbWhere("isOnline", "==", true)))
+        const riderIds = ridersSnap.docs.map(d => d.id)
+        if (riderIds.length > 0) {
+          await notifyNewOrder({ ...orderData, id: docRef.id }, riderIds)
+        }
+      } catch (_) {}
       setSubmitted(true)
     } catch {
       alert("Order တင်ရာတွင် အမှားတစ်ခု ဖြစ်ပေါ်သည်")
