@@ -3,24 +3,25 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   collection, query, where, onSnapshot,
-  doc, updateDoc, setDoc, serverTimestamp, getDoc
+  doc, updateDoc, setDoc, getDoc, serverTimestamp
 } from "firebase/firestore"
 import { db } from "../../firebase/config"
 import { useAuth } from "../../context/AuthContext"
 import { notifyOrderAccepted } from "../../services/notificationService"
 import Navbar from "../../components/common/Navbar"
 import BottomNav from "../../components/common/BottomNav"
+import Toast from "../../components/common/Toast"
 
 const TODAY_LIMIT    = 3
 const TOMORROW_LIMIT = 5
 
 async function sendTelegramAccept(order, rider) {
-  const BOT_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN
-  const CHAT_ID   = import.meta.env.VITE_TELEGRAM_ADMIN_CHAT_ID
-  if (!BOT_TOKEN || !CHAT_ID) return
+  const BOT   = import.meta.env.VITE_TELEGRAM_BOT_TOKEN
+  const CHAT  = import.meta.env.VITE_TELEGRAM_ADMIN_CHAT_ID
+  if (!BOT || !CHAT) return
   const time = new Date().toLocaleString("en-GB", {
     day:"2-digit", month:"2-digit", year:"numeric",
-    hour:"2-digit", minute:"2-digit", hour12:true
+    hour:"2-digit", minute:"2-digit", hour12:true,
   })
   const text = `✅ <b>Order လက်ခံပြီ!</b>
 ━━━━━━━━━━━━━━━━
@@ -33,49 +34,45 @@ async function sendTelegramAccept(order, rider) {
 👤 <b>Customer:</b> ${order.customerName}
 📍 <b>ယူမည့်နေရာ:</b> ${order.pickup?.address}
 🎯 <b>ပို့မည့်နေရာ:</b> ${order.dropoff?.address}
-🚚 <b>Delivery Fee:</b> ${order.deliveryFee?.toLocaleString()} ကျပ်
-🏍️ <b>Rider ရမည်:</b> ${order.riderNet?.toLocaleString()} ကျပ်
+🚚 <b>Delivery Fee:</b> ${Number(order.deliveryFee||0).toLocaleString()} ကျပ်
+🏍️ <b>Rider ရမည်:</b> ${Number(order.riderNet||0).toLocaleString()} ကျပ်
 ━━━━━━━━━━━━━━━━
 🔍 <b>Status:</b> Rider လာနေသည် 🏍️`
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+  await fetch(`https://api.telegram.org/bot${BOT}/sendMessage`, {
     method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode:"HTML" }),
+    body: JSON.stringify({ chat_id: CHAT, text, parse_mode:"HTML" }),
   }).catch(() => {})
 }
 
-// Today မှာ accept လုပ်ပြီးသော orders count
 function getTodayCount(orders) {
-  const todayStart = new Date()
-  todayStart.setHours(0, 0, 0, 0)
+  const start = new Date(); start.setHours(0,0,0,0)
   return orders.filter(o => {
     const d = o.acceptedAt?.toDate?.() || o.createdAt?.toDate?.() || new Date(0)
-    return d >= todayStart && ["accepted","picked_up","delivered"].includes(o.status)
+    return d >= start && ["accepted","picked_up","delivered"].includes(o.status)
   }).length
 }
 
-// Tomorrow = မနက်ဖြန် date range
-function getTomorrowRange() {
-  const start = new Date()
-  start.setDate(start.getDate() + 1)
-  start.setHours(0, 0, 0, 0)
-  const end = new Date(start)
-  end.setHours(23, 59, 59, 999)
-  return { start, end }
-}
-
 export default function RiderDashboard() {
-  const { user } = useAuth()
+  const { user }  = useAuth()
   const navigate  = useNavigate()
   const [isOnline, setIsOnline]           = useState(false)
+  const [onlineLoaded, setOnlineLoaded]   = useState(false) // Firebase ကနေ load ပြီးမှ render
   const [pendingOrders, setPendingOrders] = useState([])
   const [myOrders, setMyOrders]           = useState([])
   const [riderData, setRiderData]         = useState(null)
   const [accepting, setAccepting]         = useState(null)
   const [newOrderAlert, setNewOrderAlert] = useState(false)
-  const [tab, setTab]                     = useState("today") // "today" | "tomorrow"
+  const [tab, setTab]                     = useState("today")
+  const [toast, setToast]                 = useState(null)
   const prevCountRef = useRef(0)
+  const onlineRef    = useRef(false) // prevent double-write on mount
 
-  // Ensure riders doc exists, then sync online status
+  const showToast = (msg, type = "success") => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  // ── Ensure riders doc + load isOnline from Firebase ──
   useEffect(() => {
     if (!user) return
     const riderRef = doc(db, "riders", user.uid)
@@ -88,11 +85,18 @@ export default function RiderDashboard() {
           rating: 5.0, totalDeliveries: 0,
           createdAt: serverTimestamp(),
         })
+        setIsOnline(false)
+      } else {
+        // Firebase ထဲက isOnline ကို ယူ
+        const savedOnline = snap.data()?.isOnline ?? false
+        setIsOnline(savedOnline)
+        onlineRef.current = savedOnline
       }
+      setOnlineLoaded(true)
     })
   }, [user])
 
-  // Rider data listener
+  // ── Rider data real-time ──
   useEffect(() => {
     if (!user) return
     const unsub = onSnapshot(doc(db, "riders", user.uid), snap => {
@@ -101,106 +105,113 @@ export default function RiderDashboard() {
     return () => unsub()
   }, [user])
 
-  // Sync online status
+  // ── Sync online to Firebase (only after loaded, only on real change) ──
   useEffect(() => {
-    if (!user) return
+    if (!user || !onlineLoaded) return
+    if (onlineRef.current === isOnline) return // no change, skip
+    onlineRef.current = isOnline
     updateDoc(doc(db, "riders", user.uid), {
       isOnline, updatedAt: serverTimestamp()
     }).catch(() => {})
-  }, [isOnline, user])
+  }, [isOnline, onlineLoaded, user])
 
-  // My orders (today + tomorrow)
+  // ── My orders ──
   useEffect(() => {
     if (!user) return
-    const q = query(
-      collection(db, "orders"),
-      where("riderId", "==", user.uid)
-    )
+    const q = query(collection(db, "orders"), where("riderId", "==", user.uid))
     const unsub = onSnapshot(q, snap => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      setMyOrders(data)
+      setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     })
     return () => unsub()
   }, [user])
 
-  // Pending orders (available to accept)
+  // ── Pending orders ──
   useEffect(() => {
     if (!user || !isOnline) { setPendingOrders([]); return }
     const q = query(collection(db, "orders"), where("status", "==", "pending"))
     const unsub = onSnapshot(q, snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      data.sort((a, b) => (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0))
-      if (data.length > prevCountRef.current) setNewOrderAlert(true)
+      data.sort((a,b) => (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0))
+      if (data.length > prevCountRef.current && prevCountRef.current >= 0) {
+        setNewOrderAlert(true)
+      }
       prevCountRef.current = data.length
       setPendingOrders(data)
     })
     return () => unsub()
   }, [user, isOnline])
 
-  const todayCount    = getTodayCount(myOrders)
-  const tomorrowRange = getTomorrowRange()
+  const todayStart   = new Date(); todayStart.setHours(0,0,0,0)
+  const tomStart     = new Date(); tomStart.setDate(tomStart.getDate()+1); tomStart.setHours(0,0,0,0)
+  const tomEnd       = new Date(tomStart); tomEnd.setHours(23,59,59,999)
 
-  // Today active/delivered orders
-  const todayOrders = myOrders.filter(o => {
+  const todayOrders  = myOrders.filter(o => {
     const d = o.acceptedAt?.toDate?.() || o.createdAt?.toDate?.() || new Date(0)
-    const todayStart = new Date(); todayStart.setHours(0,0,0,0)
     return d >= todayStart
   }).sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0))
 
-  // Tomorrow scheduled orders (orders created for tomorrow — currently just pending orders for demo)
   const tomorrowOrders = myOrders.filter(o => {
     const d = o.createdAt?.toDate?.() || new Date(0)
-    return d >= tomorrowRange.start && d <= tomorrowRange.end
+    return d >= tomStart && d <= tomEnd
   })
 
-  const canAcceptToday     = todayCount < TODAY_LIMIT
-  const canAcceptTomorrow  = tomorrowOrders.length < TOMORROW_LIMIT
+  const todayCount   = getTodayCount(myOrders)
+  const canToday     = todayCount < TODAY_LIMIT
+  const canTomorrow  = tomorrowOrders.length < TOMORROW_LIMIT
+  const todayEarned  = todayOrders.filter(o=>o.status==="delivered").reduce((s,o)=>s+(o.riderNet||0),0)
 
   const handleAccept = async (order) => {
-    if (tab === "today" && !canAcceptToday) {
-      alert(`ယနေ့ ${TODAY_LIMIT} ကြိမ် ပြည့်နေပြီ`)
+    if (tab === "today" && !canToday) {
+      showToast(`ယနေ့ ${TODAY_LIMIT} ကြိမ် ပြည့်နေပြီ 😊`, "warn")
       return
     }
-    if (tab === "tomorrow" && !canAcceptTomorrow) {
-      alert(`မနက်ဖြန် ${TOMORROW_LIMIT} ကြိမ် ပြည့်နေပြီ`)
+    if (tab === "tomorrow" && !canTomorrow) {
+      showToast(`မနက်ဖြန် ${TOMORROW_LIMIT} ကြိမ် ပြည့်နေပြီ`, "warn")
       return
     }
     setAccepting(order.id)
     try {
       await updateDoc(doc(db, "orders", order.id), {
-        status:       "accepted",
-        riderId:      user.uid,
-        riderName:    user.name,
-        riderPhone:   user.phone || "",
-        acceptedAt:   serverTimestamp(),
-        updatedAt:    serverTimestamp(),
-        scheduledFor: tab === "tomorrow" ? "tomorrow" : "today",
+        status: "accepted", riderId: user.uid,
+        riderName: user.name, riderPhone: user.phone || "",
+        acceptedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        scheduledFor: tab,
       })
       await sendTelegramAccept(order, user)
       await notifyOrderAccepted({ ...order, riderName: user.name })
+      showToast("Order လက်ခံပြီ! ✅", "success")
       navigate("/rider/delivery")
-    } catch (e) { alert("Error: " + e.message) }
-    finally { setAccepting(null) }
+    } catch (e) {
+      showToast("Error ဖြစ်သည်: " + e.message, "error")
+    } finally {
+      setAccepting(null) }
   }
 
-  const todayEarned = todayOrders
-    .filter(o => o.status === "delivered")
-    .reduce((s, o) => s + (o.riderNet || 0), 0)
+  const handleToggleOnline = () => {
+    const next = !isOnline
+    setIsOnline(next)
+    showToast(next ? "🟢 Online ဖြစ်ပြီ!" : "⚫ Offline ဖြစ်ပြီ", next ? "success" : "warn")
+  }
 
   const statusLabel = {
-    pending:   "⏳ Pending",
-    accepted:  "🏍️ လာနေသည်",
-    picked_up: "📦 သယ်ဆောင်",
-    delivered: "✅ ပို့ပြီး",
-    cancelled: "❌ ပယ်ဖျက်",
+    pending:"⏳ Pending", accepted:"🏍️ လာနေ",
+    picked_up:"📦 သယ်", delivered:"✅ ပို့ပြီး", cancelled:"❌ ပယ်",
+  }
+
+  if (!onlineLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   return (
     <div className="flex flex-col h-screen bg-surface">
       <Navbar />
+      {toast && <Toast message={toast.msg} type={toast.type} />}
       <div className="flex-1 overflow-y-auto pb-24">
 
-        {/* New Order Alert */}
         {newOrderAlert && isOnline && (
           <div className="mx-4 mt-3 bg-primary-500 text-white rounded-2xl p-3 flex items-center gap-3">
             <span className="text-2xl animate-bounce">🔔</span>
@@ -209,7 +220,7 @@ export default function RiderDashboard() {
           </div>
         )}
 
-        {/* Status Header */}
+        {/* Header */}
         <div className={`px-4 py-4 ${isOnline ? "bg-dark" : "bg-gray-600"} transition-colors`}>
           <div className="flex items-center justify-between">
             <div>
@@ -224,7 +235,7 @@ export default function RiderDashboard() {
               </div>
             </div>
             <div className="flex flex-col items-center gap-1">
-              <button onClick={() => setIsOnline(!isOnline)}
+              <button onClick={handleToggleOnline}
                 className={`relative w-14 h-8 rounded-full transition-colors ${isOnline ? "bg-green-500" : "bg-gray-500"}`}>
                 <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${isOnline ? "translate-x-7" : "translate-x-1"}`} />
               </button>
@@ -240,9 +251,7 @@ export default function RiderDashboard() {
           <div className="grid grid-cols-3 gap-2">
             <div className="card text-center">
               <p className="text-xl mb-1">📦</p>
-              <p className="font-display font-black text-dark">
-                {todayCount}<span className="text-gray-400 text-xs">/{TODAY_LIMIT}</span>
-              </p>
+              <p className="font-display font-black text-dark">{todayCount}<span className="text-gray-400 text-xs">/{TODAY_LIMIT}</span></p>
               <p className="text-[10px] text-gray-400">ယနေ့</p>
             </div>
             <div className="card text-center">
@@ -252,15 +261,12 @@ export default function RiderDashboard() {
             </div>
             <div className="card text-center">
               <p className="text-xl mb-1">📅</p>
-              <p className="font-display font-black text-dark">
-                {tomorrowOrders.length}<span className="text-gray-400 text-xs">/{TOMORROW_LIMIT}</span>
-              </p>
+              <p className="font-display font-black text-dark">{tomorrowOrders.length}<span className="text-gray-400 text-xs">/{TOMORROW_LIMIT}</span></p>
               <p className="text-[10px] text-gray-400">မနက်ဖြန်</p>
             </div>
           </div>
         </div>
 
-        {/* Coin low warning */}
         {riderData?.coinBalance < 1000 && (
           <div className="mx-4 mb-3 bg-red-50 border border-red-200 rounded-2xl p-3 flex items-center gap-2">
             <span className="text-xl">⚠️</span>
@@ -271,59 +277,38 @@ export default function RiderDashboard() {
           </div>
         )}
 
-        {/* Tab: Today / Tomorrow */}
-        {isOnline && (
-          <div className="px-4 mb-3">
-            <div className="flex bg-gray-100 rounded-2xl p-1 gap-1">
+        {isOnline ? (
+          <div className="px-4">
+            {/* Tab */}
+            <div className="flex bg-gray-100 rounded-2xl p-1 gap-1 mb-3">
               <button onClick={() => setTab("today")}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all
-                  ${tab === "today" ? "bg-white text-primary-500 shadow-sm" : "text-gray-400"}`}>
-                ⚡ ယနေ့ Orders ({todayCount}/{TODAY_LIMIT})
+                  ${tab==="today" ? "bg-white text-primary-500 shadow-sm" : "text-gray-400"}`}>
+                ⚡ ယနေ့ ({todayCount}/{TODAY_LIMIT})
               </button>
               <button onClick={() => setTab("tomorrow")}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all
-                  ${tab === "tomorrow" ? "bg-white text-primary-500 shadow-sm" : "text-gray-400"}`}>
+                  ${tab==="tomorrow" ? "bg-white text-primary-500 shadow-sm" : "text-gray-400"}`}>
                 📅 မနက်ဖြန် ({tomorrowOrders.length}/{TOMORROW_LIMIT})
               </button>
             </div>
-          </div>
-        )}
 
-        {isOnline ? (
-          <div className="px-4">
-
-            {/* Limit reached */}
-            {tab === "today" && !canAcceptToday && (
-              <div className="card text-center py-6 mb-3">
-                <p className="text-3xl mb-2">🎉</p>
-                <p className="text-sm font-bold text-dark">ယနေ့ Order ပြည့်ပြီ!</p>
-                <p className="text-xs text-gray-400 mt-1">မနက်ဖြန် tab ကို ကြည့်ပါ</p>
-              </div>
-            )}
-            {tab === "tomorrow" && !canAcceptTomorrow && (
-              <div className="card text-center py-6 mb-3">
-                <p className="text-3xl mb-2">📅</p>
-                <p className="text-sm font-bold text-dark">မနက်ဖြန် Order ပြည့်ပြီ!</p>
-                <p className="text-xs text-gray-400 mt-1">{TOMORROW_LIMIT} ကြိမ် အများဆုံး</p>
-              </div>
-            )}
-
-            {/* My orders for selected tab */}
-            {(tab === "today" ? todayOrders : tomorrowOrders).length > 0 && (
+            {/* My orders for tab */}
+            {(tab==="today" ? todayOrders : tomorrowOrders).length > 0 && (
               <div className="mb-4">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  {tab === "today" ? "ယနေ့ Orders" : "မနက်ဖြန် Orders"}
+                  {tab==="today" ? "ယနေ့ Orders" : "မနက်ဖြန် Orders"}
                 </p>
                 <div className="space-y-2">
-                  {(tab === "today" ? todayOrders : tomorrowOrders).map(o => (
+                  {(tab==="today" ? todayOrders : tomorrowOrders).map(o => (
                     <div key={o.id} className="card flex items-center gap-3">
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold text-gray-400">#{o.id?.slice(-6).toUpperCase()}</p>
-                        <p className="text-xs text-gray-600 mt-0.5">{o.pickup?.address} → {o.dropoff?.address}</p>
+                        <p className="text-xs text-gray-600 truncate">{o.pickup?.address} → {o.dropoff?.address}</p>
                       </div>
-                      <span className={`text-xs px-2 py-1 rounded-full font-semibold whitespace-nowrap
-                        ${o.status === "delivered" ? "bg-green-100 text-green-600" :
-                          o.status === "accepted" || o.status === "picked_up" ? "bg-blue-100 text-blue-600" :
+                      <span className={`text-xs px-2 py-1 rounded-full font-semibold shrink-0
+                        ${o.status==="delivered" ? "bg-green-100 text-green-600" :
+                          ["accepted","picked_up"].includes(o.status) ? "bg-blue-100 text-blue-600" :
                           "bg-gray-100 text-gray-500"}`}>
                         {statusLabel[o.status]}
                       </span>
@@ -333,8 +318,18 @@ export default function RiderDashboard() {
               </div>
             )}
 
-            {/* Available pending orders */}
-            <div className="flex items-center justify-between mb-3">
+            {/* Limit notice */}
+            {((tab==="today" && !canToday) || (tab==="tomorrow" && !canTomorrow)) && (
+              <div className="card text-center py-5 mb-3">
+                <p className="text-2xl mb-1">🎉</p>
+                <p className="text-sm font-bold text-dark">
+                  {tab==="today" ? "ယနေ့ Order ပြည့်ပြီ!" : "မနက်ဖြန် Order ပြည့်ပြီ!"}
+                </p>
+              </div>
+            )}
+
+            {/* Available orders */}
+            <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Available Orders</p>
               {pendingOrders.length > 0 && (
                 <span className="bg-primary-100 text-primary-600 text-xs font-bold px-2 py-0.5 rounded-full">
@@ -352,15 +347,15 @@ export default function RiderDashboard() {
               <div className="space-y-3">
                 {pendingOrders.map(order => (
                   <div key={order.id} className="card">
-                    <div className="flex items-start justify-between mb-2">
+                    <div className="flex justify-between mb-2">
                       <div>
                         <p className="text-xs text-gray-400">#{order.id?.slice(-6).toUpperCase()}</p>
-                        <p className="font-display font-black text-dark">{order.deliveryFee?.toLocaleString()} ကျပ်</p>
-                        <p className="text-xs text-green-600 font-semibold">Rider ရမည်: {order.riderNet?.toLocaleString()} ကျပ်</p>
+                        <p className="font-display font-black text-dark">{Number(order.deliveryFee||0).toLocaleString()} ကျပ်</p>
+                        <p className="text-xs text-green-600 font-semibold">ရမည်: {Number(order.riderNet||0).toLocaleString()} ကျပ်</p>
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-gray-400">{order.distKm} km</p>
-                        <p className="text-xs mt-0.5">{order.paymentType === "cod" ? "💵 COD" : "✅ Cash"}</p>
+                        <p className="text-xs">{order.paymentType==="cod" ? "💵 COD" : "✅ Cash"}</p>
                       </div>
                     </div>
                     <div className="space-y-1 mb-2">
@@ -379,19 +374,12 @@ export default function RiderDashboard() {
                       <span>🏷️ {order.itemTypeLabel}</span>
                     </div>
                     <div className="flex gap-2">
-                      <button className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold">
-                        ❌ ငြင်းမည်
-                      </button>
-                      <button
-                        onClick={() => handleAccept(order)}
-                        disabled={
-                          accepting === order.id ||
-                          (tab === "today" && !canAcceptToday) ||
-                          (tab === "tomorrow" && !canAcceptTomorrow)
-                        }
+                      <button className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold">❌ ငြင်း</button>
+                      <button onClick={() => handleAccept(order)}
+                        disabled={accepting===order.id || (tab==="today"&&!canToday) || (tab==="tomorrow"&&!canTomorrow)}
                         className="flex-[2] py-2.5 rounded-xl bg-primary-500 text-white text-xs font-bold shadow-primary disabled:opacity-40">
-                        {accepting === order.id ? "လက်ခံနေသည်..." :
-                          tab === "tomorrow" ? "📅 မနက်ဖြန် လက်ခံ" : "✅ ယနေ့ လက်ခံ"}
+                        {accepting===order.id ? "လက်ခံနေသည်..." :
+                          tab==="tomorrow" ? "📅 မနက်ဖြန် လက်ခံ" : "✅ ယနေ့ လက်ခံ"}
                       </button>
                     </div>
                   </div>
@@ -402,10 +390,8 @@ export default function RiderDashboard() {
         ) : (
           <div className="px-4 py-8 text-center">
             <p className="text-5xl mb-3">😴</p>
-            <p className="text-gray-400 text-sm">Offline - Orders မမြင်ရပါ</p>
-            <button onClick={() => setIsOnline(true)} className="mt-4 btn-primary w-auto px-8">
-              Online ဖွင့်မည်
-            </button>
+            <p className="text-gray-400 text-sm">Offline — Orders မမြင်ရပါ</p>
+            <button onClick={handleToggleOnline} className="mt-4 btn-primary w-auto px-8">Online ဖွင့်မည်</button>
           </div>
         )}
       </div>
