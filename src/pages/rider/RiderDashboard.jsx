@@ -7,6 +7,7 @@ import {
 } from "firebase/firestore"
 import { db } from "../../firebase/config"
 import { useAuth } from "../../context/AuthContext"
+import { notifyOrderAccepted } from "../../services/notificationService"
 import Navbar from "../../components/common/Navbar"
 import BottomNav from "../../components/common/BottomNav"
 
@@ -176,6 +177,7 @@ export default function RiderDashboard() {
         scheduledFor: tab === "tomorrow" ? "tomorrow" : "today",
       })
       await sendTelegramAccept(order, user)
+      await notifyOrderAccepted({ ...order, riderName: user.name })
       navigate("/rider/delivery")
     } catch (e) { alert("Error: " + e.message) }
     finally { setAccepting(null) }
