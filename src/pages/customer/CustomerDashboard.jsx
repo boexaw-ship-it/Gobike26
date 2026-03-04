@@ -28,7 +28,9 @@ export default function CustomerDashboard() {
     if (!user) return
     const q = query(collection(db, "orders"), where("customerId", "==", user.uid))
     const unsub = onSnapshot(q, snap => {
-      const data = snap.docs.map(d => ({ id:d.id, ...d.data() }))
+      const data = snap.docs
+        .map(d => ({ id:d.id, ...d.data() }))
+        .filter(o => !o.hiddenByCustomer)  // history ထဲမှ ဖျောက်ထားသောများ dashboard မှာလည်း မပြ
       data.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0))
       setOrders(data)
       setLoading(false)
@@ -44,7 +46,7 @@ export default function CustomerDashboard() {
   }, [])
 
   const activeOrders = orders.filter(o => ["pending","accepted","picked_up"].includes(o.status))
-  const recentOrders = orders.slice(0, 5)
+  const recentOrders = orders.filter(o => !o.hiddenByCustomer).slice(0, 5)
 
   const timeAgo = (ts) => {
     if (!ts) return ""
