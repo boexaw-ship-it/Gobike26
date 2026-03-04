@@ -7,7 +7,7 @@ import { auth, db } from "../firebase/config"
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
+  const [user, setUser]       = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -16,6 +16,8 @@ export function AuthProvider({ children }) {
         const snap = await getDoc(doc(db, "users", firebaseUser.uid))
         if (snap.exists()) {
           setUser({ uid: firebaseUser.uid, ...snap.data() })
+        } else {
+          setUser(null)
         }
       } else {
         setUser(null)
@@ -32,10 +34,12 @@ export function AuthProvider({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
+      <div className="min-h-screen flex items-center justify-center bg-dark">
         <div className="text-center">
-          <p className="text-3xl mb-2">🚴</p>
-          <p className="text-xs text-gray-400">Loading...</p>
+          <img src="/gobike-logo.png" alt="Gobike"
+            className="w-16 h-16 rounded-2xl mx-auto mb-3 object-contain"
+            onError={e => e.target.style.display="none"} />
+          <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto" />
         </div>
       </div>
     )
