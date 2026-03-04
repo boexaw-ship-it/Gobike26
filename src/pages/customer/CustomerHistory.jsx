@@ -1,7 +1,7 @@
 // src/pages/customer/CustomerHistory.jsx
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc } from "firebase/firestore"
+import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore"
 import { db } from "../../firebase/config"
 import { useAuth } from "../../context/AuthContext"
 import Navbar from "../../components/common/Navbar"
@@ -146,6 +146,7 @@ export default function CustomerHistory() {
     const q = query(collection(db, "orders"), where("customerId", "==", user.uid))
     const unsub = onSnapshot(q, snap => {
       const data = snap.docs.map(d => ({ id:d.id, ...d.data() }))
+        .filter(o => !o.hiddenByCustomer)  // admin မှာ မပျက်ဘဲ Customer မှာ ဖျောက်ထားသည်
       data.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0))
       setOrders(data)
       setLoading(false)
@@ -172,9 +173,13 @@ export default function CustomerHistory() {
   const handleDelete = async (orderId) => {
     setDeletingId(orderId)
     try {
-      await deleteDoc(doc(db, "orders", orderId))
+      // Real delete မဟုတ် — admin စစ်နိုင်အောင် hiddenByCustomer flag တင်ထားသည်
+      await updateDoc(doc(db, "orders", orderId), {
+        hiddenByCustomer: true,
+        hiddenAt: new Date(),
+      })
       setDetailOrder(null)
-      showToast("မှတ်တမ်း ဖျက်ပြီ 🗑️", "info")
+      showToast("မှတ်တမ်းမှ ဖျောက်ပြီ 🗑️", "info")
     } catch { showToast("Error ဖြစ်သည်", "error") }
     finally { setDeletingId(null) }
   }
