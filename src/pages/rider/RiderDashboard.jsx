@@ -12,7 +12,7 @@ import Navbar from "../../components/common/Navbar"
 import BottomNav from "../../components/common/BottomNav"
 import Toast from "../../components/common/Toast"
 
-const TODAY_LIMIT    = 3
+const TODAY_LIMIT    = 5
 const TOMORROW_LIMIT = 5
 
 async function sendTelegramAccept(order, rider) {
@@ -347,37 +347,78 @@ export default function RiderDashboard() {
               <div className="space-y-3">
                 {pendingOrders.map(order => (
                   <div key={order.id} className="card">
-                    <div className="flex justify-between mb-2">
+                    {/* ── Header row ── */}
+                    <div className="flex justify-between items-start mb-3">
                       <div>
-                        <p className="text-xs text-gray-400">#{order.id?.slice(-6).toUpperCase()}</p>
-                        <p className="font-display font-black text-dark">{Number(order.deliveryFee||0).toLocaleString()} ကျပ်</p>
-                        <p className="text-xs text-green-600 font-semibold">ရမည်: {Number(order.riderNet||0).toLocaleString()} ကျပ်</p>
+                        <p className="text-[10px] text-gray-400 font-bold">#{order.id?.slice(-6).toUpperCase()}</p>
+                        <p className="text-xs mt-0.5">{order.paymentType==="cod" ? "💵 COD" : "✅ Cash"}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-gray-400">{order.distKm} km</p>
-                        <p className="text-xs">{order.paymentType==="cod" ? "💵 COD" : "✅ Cash"}</p>
+                        <p className="text-[10px] text-gray-400 mb-0.5">Delivery Fee</p>
+                        <p className="font-display font-black text-primary-500 text-lg leading-none">{Number(order.deliveryFee||0).toLocaleString()} ကျပ်</p>
                       </div>
                     </div>
-                    <div className="space-y-1 mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                        <p className="text-xs text-gray-600 truncate">{order.pickup?.address}</p>
+
+                    {/* ── Fee breakdown ── */}
+                    <div className="bg-gray-50 rounded-2xl p-3 mb-3 space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">💎 ပစ္စည်းတန်ဖိုး</span>
+                        <span className="font-semibold">{Number(order.itemValue||0).toLocaleString()} ကျပ်</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                        <p className="text-xs text-gray-600 truncate">{order.dropoff?.address}</p>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">🚚 Delivery Fee</span>
+                        <span className="font-semibold">{Number(order.deliveryFee||0).toLocaleString()} ကျပ်</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-gray-200 pt-1">
+                        <span className="font-bold text-gray-600">💰 Customer ပေးရ</span>
+                        <span className="font-bold">{(Number(order.itemValue||0)+Number(order.deliveryFee||0)).toLocaleString()} ကျပ်</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-gray-200 pt-1">
+                        <span className="text-green-600 font-bold">🏍️ သင်ရမည်</span>
+                        <span className="text-green-600 font-black">{Number(order.riderNet||0).toLocaleString()} ကျပ်</span>
                       </div>
                     </div>
-                    <div className="bg-gray-50 rounded-xl px-3 py-1.5 mb-3 flex gap-3 text-xs text-gray-500">
+
+                    {/* ── Route ── */}
+                    <div className="space-y-1.5 mb-3">
+                      <div className="flex items-start gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0 mt-1" />
+                        <div>
+                          <p className="text-[10px] text-gray-400">ယူမည့်နေရာ</p>
+                          <p className="text-xs font-semibold text-gray-700">{order.pickup?.address}</p>
+                        </div>
+                      </div>
+                      {order.waypoints?.map((wp, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <div className="w-2 h-2 rounded-full bg-yellow-400 shrink-0 mt-1" />
+                          <div>
+                            <p className="text-[10px] text-gray-400">လမ်းကြုံ {i+1}</p>
+                            <p className="text-xs font-semibold text-gray-700">{wp.address}</p>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex items-start gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1" />
+                        <div>
+                          <p className="text-[10px] text-gray-400">ပို့မည့်နေရာ</p>
+                          <p className="text-xs font-semibold text-gray-700">{order.dropoff?.address}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── Customer + Item ── */}
+                    <div className="flex gap-3 text-xs text-gray-500 mb-3">
                       <span>👤 {order.customerName}</span>
-                      <span>·</span>
+                      <span className="text-gray-300">·</span>
                       <span>🏷️ {order.itemTypeLabel}</span>
                     </div>
+
+                    {/* ── Buttons ── */}
                     <div className="flex gap-2">
-                      <button className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold">❌ ငြင်း</button>
+                      <button className="flex-1 py-3 rounded-2xl bg-gray-100 text-gray-500 text-xs font-bold">❌ ငြင်း</button>
                       <button onClick={() => handleAccept(order)}
                         disabled={accepting===order.id || (tab==="today"&&!canToday) || (tab==="tomorrow"&&!canTomorrow)}
-                        className="flex-[2] py-2.5 rounded-xl bg-primary-500 text-white text-xs font-bold shadow-primary disabled:opacity-40">
+                        className="flex-[2] py-3 rounded-2xl bg-primary-500 text-white text-sm font-bold shadow-primary disabled:opacity-40">
                         {accepting===order.id ? "လက်ခံနေသည်..." :
                           tab==="tomorrow" ? "📅 မနက်ဖြန် လက်ခံ" : "✅ ယနေ့ လက်ခံ"}
                       </button>

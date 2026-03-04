@@ -8,6 +8,7 @@ import {
 import { db } from "../../firebase/config"
 import { useAuth } from "../../context/AuthContext"
 import { deductCommission } from "../../services/walletService"
+import Toast from "../../components/common/Toast"
 import { notifyPickedUp, notifyDelivered } from "../../services/notificationService" 
 import Navbar from "../../components/common/Navbar"
 import BottomNav from "../../components/common/BottomNav"
@@ -113,7 +114,16 @@ export default function ActiveDelivery() {
   const [doneData, setDoneData]       = useState(null)
   const [newAlert, setNewAlert]       = useState(0)
   const [riderPos, setRiderPos]       = useState(null)
+  const [pendingOrders, setPendingOrders] = useState([])
+  const [showPickModal, setShowPickModal] = useState(false)
+  const [pickingUp, setPickingUp]     = useState(null)
+  const [toast, setToast]             = useState(null)
   const stepRef  = useRef(0)
+
+  const showToast = (msg, type="success") => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3000)
+  }
 
   // ── Firebase: watch my active order ──────────
   useEffect(() => {
@@ -155,9 +165,60 @@ export default function ActiveDelivery() {
   useEffect(() => {
     if (!order) return
     const q    = query(collection(db, "orders"), where("status", "==", "pending"))
-    const unsub = onSnapshot(q, snap => setNewAlert(snap.docs.length))
+    const unsub = onSnapshot(q, snap => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      setNewAlert(data.length)
+      setPendingOrders(data)
+    })
     return () => unsub()
   }, [order?.id])
+
+  // ── Accept waypoint order (while delivering) ──
+  const handlePickWaypoint = async (extra) => {
+    if (!order || pickingUp) return
+    setPickingUp(extra.id)
+    try {
+      // Mark extra order as accepted with this rider
+      await updateDoc(doc(db, "orders", extra.id), {
+        status: "accepted",
+        riderId: user.uid,
+        riderName: user.name,
+        riderPhone: user.phone || "",
+        acceptedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        scheduledFor: "today",
+        isWaypoint: true,
+        linkedOrderId: order.id,
+      })
+      setShowPickModal(false)
+      showToast(`✅ လမ်းကြုံ order လက်ခံပြီ! #${extra.id?.slice(-6).toUpperCase()}`, "success")
+      // Send telegram
+      const BOT  = import.meta.env.VITE_TELEGRAM_BOT_TOKEN
+      const CHAT = import.meta.env.VITE_TELEGRAM_ADMIN_CHAT_ID
+      if (BOT && CHAT) {
+        const time = new Date().toLocaleString("en-GB",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true})
+        await fetch(`https://api.telegram.org/bot${BOT}/sendMessage`,{
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ chat_id:CHAT, parse_mode:"HTML",
+            text:`🔶 <b>လမ်းကြုံ Order လက်ခံပြီ!</b>
+━━━━━━━━━━━━━━━━
+📦 <b>Order #${extra.id?.slice(-6).toUpperCase()}</b>
+⏰ ${time}
+🏍️ <b>Rider:</b> ${user.name}
+👤 <b>Customer:</b> ${extra.customerName}
+📍 ${extra.pickup?.address}
+🎯 ${extra.dropoff?.address}
+🚚 <b>Delivery Fee:</b> ${Number(extra.deliveryFee||0).toLocaleString()} ကျပ်
+🔗 <b>Main Order:</b> #${order.id?.slice(-6).toUpperCase()}`
+          })
+        }).catch(()=>{})
+      }
+    } catch(e) {
+      showToast("Error: " + e.message, "error")
+    } finally {
+      setPickingUp(null)
+    }
+  }
 
   // ── Status index from DB ──────────────────────
   const statusIdx = order
@@ -215,15 +276,29 @@ export default function ActiveDelivery() {
 
       <div className="flex-1 overflow-y-auto pb-36">
 
-        {/* New order alert */}
-        {newAlert > 0 && order && (
-          <div className="mx-4 mt-3 bg-orange-500 text-white rounded-2xl p-3 flex items-center gap-3">
-            <span className="text-xl animate-bounce">🔔</span>
+        {toast && <Toast message={toast.msg} type={toast.type} />}
+
+        {/* New order alert — waypoint pick */}
+        {newAlert > 0 && order && order.status === "picked_up" && (
+          <div className="mx-4 mt-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-2xl p-3 flex items-center gap-3 shadow-lg">
+            <span className="text-2xl animate-bounce">🔶</span>
             <div className="flex-1">
-              <p className="text-xs font-bold">Order {newAlert} ခု ထပ်ဝင်နေသည်!</p>
-              <p className="text-[10px] opacity-70">လက်ရှိ delivery ပြီးမှ ကောက်နိုင်မည်</p>
+              <p className="text-xs font-black">Order {newAlert} ခု ရှိနေသည်!</p>
+              <p className="text-[10px] opacity-80">လမ်းကြုံဆိုရင် ဝင်ကောက်နိုင်သည်</p>
             </div>
-            <button onClick={() => setNewAlert(0)} className="text-white/70 text-lg leading-none">✕</button>
+            <button
+              onClick={() => setShowPickModal(true)}
+              className="bg-white text-orange-500 text-xs font-black px-3 py-1.5 rounded-full shrink-0">
+              ကြည့်မည် →
+            </button>
+          </div>
+        )}
+
+        {/* Pending orders show if accepted but not picked up yet */}
+        {newAlert > 0 && order && order.status === "accepted" && (
+          <div className="mx-4 mt-3 bg-blue-50 border border-blue-200 rounded-2xl p-3 flex items-center gap-2">
+            <span className="text-base">📦</span>
+            <p className="text-xs text-blue-600 flex-1">Order {newAlert} ခု ထပ်ဝင်နေသည် — ပစ္စည်းယူပြီးမှ ကောက်နိုင်မည်</p>
           </div>
         )}
 
@@ -253,6 +328,7 @@ export default function ActiveDelivery() {
               <MapView
                 pickupPoint={order.pickup}
                 dropoffPoint={order.dropoff}
+                waypoints={order.waypoints || []}
                 riderLocation={riderPos}
                 riderName={user?.name}
                 height="100%"
@@ -310,6 +386,18 @@ export default function ActiveDelivery() {
                     <p className="text-sm font-semibold">{order.pickup?.address}</p>
                   </div>
                 </div>
+                {(order.waypoints || []).map((wp, i) => (
+                  <div key={i}>
+                    <div className="w-px h-3 bg-gray-200 ml-4" />
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center shrink-0 mt-0.5">🔶</div>
+                      <div>
+                        <p className="text-[10px] text-gray-400">လမ်းကြုံ {i+1}</p>
+                        <p className="text-sm font-semibold">{wp.address}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
                 <div className="w-px h-3 bg-gray-200 ml-4" />
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center shrink-0 mt-0.5">🎯</div>
@@ -385,6 +473,89 @@ export default function ActiveDelivery() {
       )}
 
       <BottomNav />
+
+      {/* ── Waypoint Pick Modal ── */}
+      {showPickModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl px-5 py-6 max-h-[80vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-lg font-display font-black text-dark">🔶 လမ်းကြုံ Order ကောက်မည်</h3>
+                <p className="text-xs text-gray-400 mt-0.5">လမ်းကြုံဆိုရင် ဝင်ကောက်နိုင်သည်</p>
+              </div>
+              <button onClick={() => setShowPickModal(false)}
+                className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 text-sm">✕</button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 space-y-3">
+              {pendingOrders.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-3xl mb-2">📭</p>
+                  <p className="text-gray-400 text-sm">Order မရှိတော့ပါ</p>
+                </div>
+              ) : pendingOrders.map(extra => {
+                const fee   = Number(extra.deliveryFee||0)
+                const net   = Number(extra.riderNet||0)
+                const total = Number(extra.itemValue||0) + fee
+                return (
+                  <div key={extra.id} className="border border-gray-200 rounded-2xl p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-xs text-gray-400 font-bold">#{extra.id?.slice(-6).toUpperCase()}</p>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-400">Delivery Fee</p>
+                        <p className="font-display font-black text-primary-500">{fee.toLocaleString()} ကျပ်</p>
+                      </div>
+                    </div>
+
+                    {/* Mini fee breakdown */}
+                    <div className="bg-gray-50 rounded-xl px-3 py-2 mb-2 space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">💎 ပစ္စည်းတန်ဖိုး</span>
+                        <span className="font-semibold">{Number(extra.itemValue||0).toLocaleString()} ကျပ်</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">💰 Customer ပေးရ</span>
+                        <span className="font-semibold">{total.toLocaleString()} ကျပ်</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-gray-200 pt-1">
+                        <span className="text-green-600 font-bold">🏍️ သင်ရမည်</span>
+                        <span className="text-green-600 font-black">{net.toLocaleString()} ကျပ်</span>
+                      </div>
+                    </div>
+
+                    {/* Route */}
+                    <div className="space-y-1 mb-3">
+                      <div className="flex items-start gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0 mt-1" />
+                        <p className="text-xs text-gray-600">{extra.pickup?.address}</p>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1" />
+                        <p className="text-xs text-gray-600">{extra.dropoff?.address}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 text-xs text-gray-500 mb-3">
+                      <span>👤 {extra.customerName}</span>
+                      <span>·</span>
+                      <span>🏷️ {extra.itemTypeLabel}</span>
+                      <span>·</span>
+                      <span>{extra.paymentType==="cod" ? "💵 COD" : "✅ Cash"}</span>
+                    </div>
+
+                    <button
+                      onClick={() => handlePickWaypoint(extra)}
+                      disabled={pickingUp === extra.id}
+                      className="w-full py-3 rounded-2xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold text-sm shadow-md active:scale-95 transition-all disabled:opacity-50">
+                      {pickingUp === extra.id ? "လက်ခံနေသည်..." : "🔶 လမ်းကြုံ ဝင်ကောက်မည်"}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
