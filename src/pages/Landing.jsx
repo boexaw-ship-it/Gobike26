@@ -16,7 +16,17 @@ export default function Landing() {
 
         {/* Logo */}
         <div className="relative mb-8">
-          <div className="w-24 h-24 bg-primary-500 rounded-3xl flex items-center justify-center shadow-primary mb-4">
+          <img
+            src="/gobike-logo.png"
+            alt="Gobike"
+            className="w-28 h-28 object-contain rounded-3xl shadow-2xl mb-4"
+            onError={e => {
+              e.target.style.display = "none"
+              e.target.nextSibling.style.display = "flex"
+            }}
+          />
+          {/* Fallback emoji */}
+          <div className="w-28 h-28 bg-primary-500 rounded-3xl items-center justify-center shadow-primary mb-4 hidden">
             <span className="text-5xl">🚴</span>
           </div>
           <div className="absolute -top-2 -right-2 w-6 h-6 bg-primary-300 rounded-full opacity-60 animate-ping-slow" />
