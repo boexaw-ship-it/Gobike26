@@ -120,7 +120,7 @@ export default function RiderDashboard() {
     if (!user) return
     const q = query(collection(db, "orders"), where("riderId", "==", user.uid))
     const unsub = onSnapshot(q, snap => {
-      setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => !o.hiddenByRider))  // history ထဲ ဖျောက်ထားသောများ dashboard မှာလည်း မပြ
     })
     return () => unsub()
   }, [user])
