@@ -1,6 +1,6 @@
 // src/pages/rider/RiderHistory.jsx
 import { useState, useEffect } from "react"
-import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { db } from "../../firebase/config"
 import { useAuth } from "../../context/AuthContext"
 import Navbar from "../../components/common/Navbar"
@@ -142,6 +142,7 @@ export default function RiderHistory() {
     const q = query(collection(db, "orders"), where("riderId", "==", user.uid))
     const unsub = onSnapshot(q, snap => {
       const data = snap.docs.map(d => ({ id:d.id, ...d.data() }))
+        .filter(o => !o.hiddenByRider)  // admin မှာ မပျက်ဘဲ Rider မှာ ဖျောက်ထားသည်
       data.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0))
       setOrders(data)
       setLoading(false)
@@ -172,8 +173,12 @@ export default function RiderHistory() {
     if (!selected) return
     setDeleting(true)
     try {
-      await deleteDoc(doc(db, "orders", selected.id))
-      showToast("မှတ်တမ်း ဖျက်ပြီ 🗑️", "info")
+      // Real delete မဟုတ် — admin စစ်နိုင်အောင် hiddenByRider flag တင်ထားသည်
+      await updateDoc(doc(db, "orders", selected.id), {
+        hiddenByRider: true,
+        hiddenAt: new Date(),
+      })
+      showToast("မှတ်တမ်းမှ ဖျောက်ပြီ 🗑️", "info")
       setSelected(null)
     } catch { showToast("Error ဖြစ်သည်", "error") }
     finally { setDeleting(false) }
