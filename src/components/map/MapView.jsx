@@ -48,13 +48,14 @@ const dropoffIcon = L.divIcon({
 })
 
 // Auto-fit map to show all markers
-function FitBounds({ pickup, dropoff, riderLocation }) {
+function FitBounds({ pickup, dropoff, waypoints, riderLocation }) {
   const map = useMap()
   useEffect(() => {
     const points = []
     if (pickup)        points.push([pickup.lat, pickup.lng])
     if (dropoff)       points.push([dropoff.lat, dropoff.lng])
     if (riderLocation) points.push([riderLocation.lat, riderLocation.lng])
+    waypoints?.forEach(wp => wp && points.push([wp.lat, wp.lng]))
     if (points.length >= 2) {
       map.fitBounds(points, { padding: [50, 50] })
     } else if (points.length === 1) {
@@ -89,10 +90,21 @@ function AnimatedRiderMarker({ position, name }) {
   )
 }
 
+const waypointIcon = L.divIcon({
+  className: "",
+  html: `<div style="
+    width:30px;height:30px;background:#f59e0b;
+    border-radius:50%;border:3px solid white;
+    box-shadow:0 2px 8px rgba(0,0,0,0.2);
+    display:flex;align-items:center;justify-content:center;font-size:13px;">🔶</div>`,
+  iconSize: [30, 30], iconAnchor: [15, 15],
+})
+
 export default function MapView({
   riders        = [],
   pickupPoint   = null,
   dropoffPoint  = null,
+  waypoints     = [],
   riderLocation = null,  // { lat, lng } — live rider position
   riderName     = "",
   height        = "100%",
@@ -112,6 +124,7 @@ export default function MapView({
       <FitBounds
         pickup={pickupPoint}
         dropoff={dropoffPoint}
+        waypoints={waypoints}
         riderLocation={riderLocation}
       />
 
@@ -147,6 +160,13 @@ export default function MapView({
           />
         </>
       )}
+
+      {/* Waypoints */}
+      {waypoints.map((wp, i) => wp && (
+        <Marker key={`wp-${i}`} position={[wp.lat, wp.lng]} icon={waypointIcon}>
+          <Popup><span className="text-xs font-bold">🔶 လမ်းကြုံ {i+1}: {wp.address}</span></Popup>
+        </Marker>
+      ))}
 
       {/* Dropoff */}
       {dropoffPoint && (
